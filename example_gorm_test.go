@@ -1,13 +1,3 @@
-# gorm-opentelemetry
-[![Test Status](https://github.com/kostyay/gorm-opentelemetry/workflows/Test/badge.svg)](github.com/kostyay/gorm-opentelemetry/actions)
-
-OpenTelemetry plugin for GORM v2
-
-Traces all queries along with the query SQL.
-
-Usage Example:
-====
-```go
 // Copyright The OpenTelemetry Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,12 +12,11 @@ Usage Example:
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package otelgorm
 
 import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"github.com/kostyay/gorm-opentelemetry"
 )
 
 type Product struct {
@@ -44,7 +33,7 @@ func ExampleNewPlugin() {
 	}
 
 	// Initialize otel plugin with options
-	plugin := otelgorm.NewPlugin(
+	plugin := NewPlugin(
 	// include any options here
 	)
 	err = db.Use(plugin)
@@ -66,6 +55,3 @@ func ExampleNewPlugin() {
 	db.First(&product, 1)                 // find product with integer primary key
 	db.First(&product, "code = ?", "D42") // find product with code D42
 }
-
-
-```
