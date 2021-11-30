@@ -34,7 +34,7 @@ func ExampleNewPlugin() {
 
 	// Initialize otel plugin with options
 	plugin := NewPlugin(
-	// include any options here
+		// include any options here
 	)
 	err = db.Use(plugin)
 	if err != nil {
