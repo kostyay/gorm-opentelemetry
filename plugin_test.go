@@ -26,7 +26,10 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"go.opentelemetry.io/otel/oteltest"
+	// alternative: Instead, the SpanRecorder from the go.opentelemetry.io/otel/sdk/trace/tracetest package can be
+	// registered with the default SDK (go.opentelemetry.io/otel/sdk/trace) as a SpanProcessor and used to test.
+	// This will ensure code will work with the default SDK.
+	"go.opentelemetry.io/otel/oteltest" // nolint:staticcheck //using this pkg for testing purpose.
 )
 
 type TestModel struct {
