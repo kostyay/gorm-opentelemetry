@@ -15,6 +15,8 @@
 package otelgorm
 
 import (
+	"context"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -54,4 +56,6 @@ func ExampleNewPlugin() {
 	var product Product
 	db.First(&product, 1)                 // find product with integer primary key
 	db.First(&product, "code = ?", "D42") // find product with code D42
+
+	db.WithContext(WithOmitVariablesFromTrace(context.Background())).First(&product, "code = ?", "foo")
 }
