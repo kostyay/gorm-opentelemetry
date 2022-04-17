@@ -23,10 +23,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-
-	"go.opentelemetry.io/otel/oteltest"
 )
 
 type TestModel struct {
@@ -85,12 +86,13 @@ func closeDB(db *gorm.DB) {
 func TestPlugin(t *testing.T) {
 
 	testCases := []struct {
-		name         string
-		testOp       func(db *gorm.DB) *gorm.DB
-		spans        int
-		targetSpan   int
-		sqlOp        string
-		affectedRows int64
+		name           string
+		testOp         func(db *gorm.DB) *gorm.DB
+		spans          int
+		targetSpan     int
+		expectSpanName string
+		sqlOp          string
+		affectedRows   int64
 	}{
 		{
 			"create (insert) row",
@@ -99,6 +101,7 @@ func TestPlugin(t *testing.T) {
 			},
 			2,
 			0,
+			"INSERT db.test_models",
 			"INSERT",
 			1,
 		},
@@ -115,6 +118,7 @@ func TestPlugin(t *testing.T) {
 			},
 			3,
 			1,
+			"UPDATE db.test_models",
 			"UPDATE",
 			1,
 		},
@@ -130,6 +134,7 @@ func TestPlugin(t *testing.T) {
 			},
 			3,
 			1,
+			"DELETE db.test_models",
 			"DELETE",
 			1,
 		},
@@ -145,6 +150,7 @@ func TestPlugin(t *testing.T) {
 			},
 			3,
 			1,
+			"SELECT db.test_models",
 			"SELECT",
 			1,
 		},
@@ -162,6 +168,7 @@ func TestPlugin(t *testing.T) {
 			},
 			3,
 			1,
+			"SELECT db.test_models",
 			"SELECT",
 			-1,
 		},
@@ -179,25 +186,28 @@ func TestPlugin(t *testing.T) {
 			},
 			3,
 			1,
+			"SELECT db.test_models",
 			"SELECT",
 			-1,
 		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(tt *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			db, err := initDB()
-			defer closeDB(db)
+			require.NoError(t, err, "should initialize DB")
 
-			assert.NoError(tt, err)
+			t.Cleanup(func() {
+				closeDB(db)
+			})
 
-			sr := new(oteltest.SpanRecorder)
-			provider := oteltest.NewTracerProvider(oteltest.WithSpanRecorder(sr))
+			sr := tracetest.NewSpanRecorder()
+			provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
 
-			plugin := NewPlugin(WithTracerProvider(provider))
+			plugin := NewPlugin(WithTracerProvider(provider), WithDBName("db"))
 
 			err = db.Use(plugin)
-			assert.NoError(tt, err)
+			require.NoError(t, err, "should apply plugin")
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 			defer cancel()
@@ -207,20 +217,26 @@ func TestPlugin(t *testing.T) {
 			db = db.WithContext(ctx)
 			// Create
 			dbOp := tc.testOp(db)
-			assert.NoError(tt, dbOp.Error)
+			assert.NoError(t, dbOp.Error)
 
 			span.End()
 
-			spans := sr.Completed()
+			spans := sr.Ended()
 			require.Len(t, spans, tc.spans)
 			s := spans[tc.targetSpan]
 
-			assert.Equal(tt, spans[0].SpanContext().TraceID().String(), spans[1].SpanContext().TraceID().String())
-			assert.Equal(tt, spanName, s.Name())
-			assert.Equal(tt, "test_models", s.Attributes()[dbTableKey].AsString())
-			assert.Equal(tt, tc.sqlOp, s.Attributes()[dbOperationKey].AsString())
-			assert.Equal(tt, tc.affectedRows, s.Attributes()[dbCountKey].AsInt64())
-			assert.Contains(tt, s.Attributes()[dbStatementKey].AsString(), tc.sqlOp)
+			assert.Equal(t, spans[0].SpanContext().TraceID(), spans[1].SpanContext().TraceID(), "should record spans under the same trace")
+			assert.Equal(t, s.Name(), tc.expectSpanName, "span name should match the query")
+
+			m := make(map[attribute.Key]attribute.Value)
+			for _, v := range s.Attributes() {
+				m[v.Key] = v.Value
+			}
+
+			assert.Equal(t, "test_models", m[dbTableKey].AsString(), "table attribute should point at the queried table")
+			assert.Equal(t, tc.sqlOp, m[dbOperationKey].AsString(), "operation attribute should equal the sql operation")
+			assert.Equal(t, tc.affectedRows, m[dbRowsAffectedKey].AsInt64(), "affected rows attribute should be set correctly")
+			assert.Contains(t, m[dbStatementKey].AsString(), tc.sqlOp)
 		})
 	}
 
