@@ -21,6 +21,7 @@ import (
 type config struct {
 	dbName         string
 	tracerProvider oteltrace.TracerProvider
+	alwaysOmitVars bool
 }
 
 // Option is used to configure the client.
@@ -47,5 +48,12 @@ func WithTracerProvider(provider oteltrace.TracerProvider) Option {
 func WithDBName(name string) Option {
 	return optionFunc(func(cfg *config) {
 		cfg.dbName = name
+	})
+}
+
+// WithAlwaysOmitVariables makes the plugin always omit variable values from traces.
+func WithAlwaysOmitVariables() Option {
+	return optionFunc(func(cfg *config) {
+		cfg.alwaysOmitVars = true
 	})
 }

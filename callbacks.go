@@ -54,7 +54,7 @@ func dbOperation(op string) attribute.KeyValue {
 }
 
 func (op *OtelPlugin) spanName(tx *gorm.DB, operation string) string {
-	query := extractQuery(tx)
+	query := op.extractQuery(tx)
 
 	operation = operationForQuery(query, operation)
 
@@ -85,8 +85,13 @@ func (op *OtelPlugin) before(operation string) gormHookFunc {
 	}
 }
 
-func extractQuery(tx *gorm.DB) string {
-	if shouldOmit, _ := tx.Statement.Context.Value(omitVarsKey).(bool); shouldOmit {
+func (op *OtelPlugin) extractQuery(tx *gorm.DB) string {
+	shouldOmit, ok := tx.Statement.Context.Value(omitVarsKey).(bool)
+	if !ok {
+		shouldOmit = op.cfg.alwaysOmitVars
+	}
+
+	if shouldOmit == true {
 		return tx.Statement.SQL.String()
 	}
 	return tx.Dialector.Explain(tx.Statement.SQL.String(), tx.Statement.Vars...)
@@ -131,7 +136,7 @@ func (op *OtelPlugin) after(operation string) gormHookFunc {
 		}
 
 		// extract the db operation
-		query := strings.ToValidUTF8(extractQuery(tx), "")
+		query := strings.ToValidUTF8(op.extractQuery(tx), "")
 
 		// If query is longer then max size log it as chunked event, otherwise log it in attribute
 		if len(query) > eventMaxSize {
